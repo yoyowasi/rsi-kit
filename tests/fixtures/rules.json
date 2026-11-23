@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "L06": {
+      "type": "restraint",
+      "no_exceptions": true,
+      "enforce": "pretooluse",
+      "opportunity": {"kind": "tool", "tools": ["Bash", "PowerShell"], "pattern": "gh\\s+pr\\s+merge"},
+      "correction": "사용자가 검사 확인 없이 병합했다고 지적함",
+      "enforced_by": null
+    },
+    "L01": {
+      "type": "step",
+      "no_exceptions": false,
+      "enforce": "none",
+      "opportunity": {"kind": "llm", "when": "작업을 끝내고 보고할 때"},
+      "correction": "사용자가 바꾼 파일 목록이 빠졌다고 지적함",
+      "enforced_by": null
+    }
+  }
+}
