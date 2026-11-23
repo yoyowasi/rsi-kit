@@ -66,6 +66,14 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(v["verdict"], "관찰")
         self.assertEqual(len(v["quotes"]), 2)
 
+    def test_below_recur_threshold_is_observe(self):
+        # recur_sessions 를 올려도 교정이 1회 이상이면 '지켜짐'·'판단 불가'가 아니라 '관찰'이다.
+        exs = [ex("e%d" % n, "s%d" % n) for n in range(8)]
+        js = [j("e0", corr="yes"), j("e1", corr="yes")] + [j("e%d" % n, opp="yes") for n in range(2, 7)]
+        v = rsi_judge.rule_verdict("R1", llm_rule(), REG, js, exs, dict(TH, recur_sessions=3))
+        self.assertEqual(v["correction_sessions"], 2)
+        self.assertEqual(v["verdict"], "관찰")
+
     def test_window_after_text_change(self):
         exs = [ex("old", "s1", day="2026-11-10"), ex("new", "s2", day="2026-11-12")]
         v = self.verdict([j("old", corr="yes"), j("new", corr="yes")], exs)

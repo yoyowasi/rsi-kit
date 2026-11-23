@@ -261,7 +261,7 @@ def rule_verdict(rule_id: str, rule: dict, reg_rule: dict, judgments: List[dict]
     opp |= corr
     if len(corr) >= th["recur_sessions"]:
         verdict = "재발"
-    elif len(corr) == 1:
+    elif corr:  # 교정은 있었지만 recur_sessions 에 못 미침(기본값 2 에서는 1개)
         verdict = "관찰"
     elif len(opp) >= th["kept_opportunity_sessions"]:
         verdict = "지켜짐"
