@@ -14,7 +14,8 @@ HEADING = "# 판정 확인"
 INSTRUCTION = "각 항목에서 맞음 또는 틀림 하나만 [x]로 체크하세요."
 _ITEM = re.compile(r"^### R(\d+) \[(.*)\] 판정: 교정 (yes|no)\s*$")
 _EXCERPT = re.compile(r"^- 발췌: (.*?)\s*$")
-_CHECKED = re.compile(r"^- \[[xX]\] (맞음|틀림)\s*$")
+# 칸 안에 공백이 아닌 글자 하나(x·X·v·o·✓ 등)가 있으면 체크로 본다. 에디터마다 [ v]·* [x] 처럼 써도 읽히게.
+_CHECKED = re.compile(r"^\s*[-*]\s+\[\s*\S\s*\]\s+(맞음|틀림)\s*$")
 
 
 def review_dir() -> Path:

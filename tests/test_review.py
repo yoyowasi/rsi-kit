@@ -80,6 +80,20 @@ class ReviewTest(unittest.TestCase):
         self.assertEqual(items[0]["answer"], "맞음")
         self.assertIsNone(items[1]["answer"])
 
+    def test_lenient_check_marks(self):
+        # 사람이 에디터로 x 대신 v·o·✓ 를 쓰거나 칸 안에 띄어쓰기를 넣어도 체크로 읽는다(실사용에서 [ v] 로 체크한 일이 있었다).
+        path = self.make(n_yes=8, n_no=0, size=8)
+        marks = ["- [ v] 맞음", "- [v ] 틀림", "- [V] 맞음", "- [o] 맞음", "- [✓] 틀림",
+                 "* [x] 맞음", "-  [x]  맞음", "- [ ] 맞음"]
+        out, k = [], 0
+        for ln in path.read_text(encoding="utf-8").split("\n"):
+            if ln == "- [ ] 맞음":
+                ln, k = marks[k], k + 1
+            out.append(ln)
+        path.write_text("\n".join(out), encoding="utf-8")
+        answers = [i["answer"] for i in rsi_review.read_review(path)]
+        self.assertEqual(answers, ["맞음", "틀림", "맞음", "맞음", "틀림", "맞음", "맞음", None])
+
     def test_needs_review_cycle(self):
         self.assertTrue(rsi_review.needs_review("H1"))
         self.assertIsNone(rsi_review.pending_review())
