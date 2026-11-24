@@ -68,7 +68,8 @@ class SpecTest(unittest.TestCase):
 
     def test_thresholds_must_be_positive_ints(self):
         self.write_rules()
-        for bad in ({"batch_bytes": "big"}, {"review_size": True}, {"max_proposals": 0},
+        for bad in ({"batch_bytes": "big"}, {"review_size": True}, {"review_per_run": 0}, {"review_per_run": True},
+                    {"review_per_run": "4"}, {"max_proposals": 0},
                     {"judge_every_days": -1}, {"recur_sessions": 2.5}, {"max_batches_per_run": None}):
             (self.spec / "thresholds.json").write_text(json.dumps(bad), encoding="utf-8")
             with self.assertRaises(rsi_spec.SpecError) as cm:
@@ -77,6 +78,16 @@ class SpecTest(unittest.TestCase):
             self.assertIn("양의 정수", str(cm.exception))
         (self.spec / "thresholds.json").write_text('{"batch_bytes": 1000, "note": "x"}', encoding="utf-8")
         self.assertEqual(rsi_spec.load_spec()["thresholds"]["batch_bytes"], 1000)
+
+    def test_review_per_run_default_and_old_thresholds_file(self):
+        self.assertEqual(rsi_spec.DEFAULT_THRESHOLDS["review_per_run"], 4)
+        self.write_rules()
+        self.assertEqual(rsi_spec.load_spec()["thresholds"]["review_per_run"], 4)
+        old = {k: v for k, v in rsi_spec.DEFAULT_THRESHOLDS.items() if k != "review_per_run"}
+        (self.spec / "thresholds.json").write_text(json.dumps(old), encoding="utf-8")
+        self.assertEqual(rsi_spec.load_spec()["thresholds"]["review_per_run"], 4)
+        (self.spec / "thresholds.json").write_text('{"review_per_run": 6}', encoding="utf-8")
+        self.assertEqual(rsi_spec.load_spec()["thresholds"]["review_per_run"], 6)
 
     def test_judge_hash_covers_prompt_and_rule_meaning_only(self):
         self.write_rules()

@@ -113,11 +113,13 @@ def _run_judge() -> int:
         called = True
         judged, pending = judge_pending(spec, registry, excerpts)
         verdicts = run_judge(rsi_review.calibration())
-        if rsi_review.needs_review(spec["prompt_hash"]):
+        mode = rsi_review.review_mode(spec["prompt_hash"])
+        if mode:
             cache = [r for r in rsi_common.read_jsonl(kit_dir() / "judgments.jsonl")
                      if r.get("judge_hash") == spec["judge_hash"] and r.get("rule") not in ("*", "!")]
-            rsi_review.make_review(today(), spec["prompt_hash"], cache, excerpts,
-                                   spec["thresholds"]["review_size"])
+            size = spec["thresholds"]["review_size" if mode == "full" else "review_per_run"]
+            rule_texts = {rid: r.get("text", "") for rid, r in (registry.get("rules") or {}).items()}
+            rsi_review.make_review(today(), spec["prompt_hash"], cache, excerpts, size, mode, rule_texts)
         path = rsi_inbox.publish(verdicts, registry, spec, len(excerpts))
         ok = True
     except AuthError as e:
@@ -148,9 +150,12 @@ def cmd_status() -> int:
     print("마지막 판정: %s" % (state.get("last_judge") or "없음"))
     print("발췌 수: %d" % len(load_excerpts(EPOCH)))
     cal = rsi_review.calibration()
-    agree = cal.get("agreement")
-    print("보정: %s (일치율 %s, 응답 %d건, 확인 대기 %d건)" % (
-        "완료" if cal.get("calibrated") else "전", "%d%%" % round(agree * 100) if agree is not None else "-",
+    def pct(v):
+        return "%d%%" % round(v * 100) if v is not None else "-"
+
+    print("보정: %s (일치율 %s, 교정 판정 정확도 %s (%d건), 놓친 교정 비율 %s (%d건), 응답 %d건, 확인 대기 %d건)" % (
+        "완료" if cal.get("calibrated") else "전", pct(cal.get("agreement")),
+        pct(cal.get("yes_precision")), cal.get("yes_answered", 0), pct(cal.get("miss_rate")), cal.get("no_answered", 0),
         cal.get("answered", 0), cal.get("pending", 0)))
     try:
         spec = load_spec()

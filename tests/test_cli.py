@@ -156,6 +156,31 @@ class CliTests(CliBase):
         self.assertNotIn("빼기", text)
         self.assertEqual(self.state()["last_judge"], rsi.today().isoformat())
 
+    def test_judge_creates_run_review_after_first_file_finished(self):
+        self.put_spec()
+        (self.kit / "spec" / "thresholds.json").write_text('{"review_size": 1}', encoding="utf-8")
+        self.assertEqual(self.run_cmd("collect").returncode, 0)
+        self.assertEqual(self.run_cmd("judge").returncode, 0)
+        rdir = self.kit / "spec" / "review"
+        first = sorted(rdir.glob("*.md"))
+        self.assertEqual(len(first), 1)
+        self.assertIn("- 규칙: ", first[0].read_text(encoding="utf-8"))
+        # 끝나지 않은 동안에는 새로 만들지 않는다
+        self.assertEqual(self.run_cmd("judge").returncode, 0)
+        self.assertEqual(sorted(rdir.glob("*.md")), first)
+        first[0].write_text(first[0].read_text(encoding="utf-8").replace("- [ ] 맞음", "- [x] 맞음"), encoding="utf-8")
+        r = self.run_cmd("judge")
+        self.assertEqual(r.returncode, 0, r.stderr + self.log_text())
+        files = sorted(rdir.glob("*.md"))
+        self.assertEqual(len(files), 2)
+        new = [f for f in files if f not in first][0]
+        text = new.read_text(encoding="utf-8")
+        self.assertEqual(text.count("### R"), 1)
+        self.assertNotEqual(text.split("- 발췌: ")[1].splitlines()[0],
+                            first[0].read_text(encoding="utf-8").split("- 발췌: ")[1].splitlines()[0])
+        s = self.run_cmd("status")
+        self.assertIn("교정 판정 정확도 100% (1건), 놓친 교정 비율 - (0건)", s.stdout)
+
     def test_lock_fresh_blocks_worker(self):
         self.put_spec()
         lock = self.kit / "worker.lock"

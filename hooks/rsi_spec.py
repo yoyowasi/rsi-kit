@@ -17,6 +17,7 @@ DEFAULT_THRESHOLDS = {
     "kept_opportunity_sessions": 5,
     "max_proposals": 5,
     "review_size": 10,
+    "review_per_run": 4,
     "batch_bytes": 122880,
     "max_batches_per_run": 12,
     "judge_every_days": 7,

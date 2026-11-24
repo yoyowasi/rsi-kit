@@ -101,42 +101,74 @@ def pending_review() -> Optional[Path]:
     return None
 
 
-def needs_review(prompt_hash: str) -> bool:
+def review_mode(prompt_hash: str) -> Optional[str]:
+    """새 확인 파일을 만들어야 하면 "full"(첫 회·프롬프트 변경 뒤) 또는 "run"(판정마다 작은 묶음), 아니면 None."""
     files = _files()
     if not files:
-        return True
+        return "full"
     if pending_review() is not None:
-        return False
-    return _prompt_hash(files[-1]) != prompt_hash
+        return None
+    return "full" if _prompt_hash(files[-1]) != prompt_hash else "run"
 
 
-def make_review(day: date, prompt_hash: str, judgments: List[dict], excerpts: List[dict], size: int) -> Optional[Path]:
-    """확인 파일을 쓰고 경로를 돌려준다. 후보가 하나도 없으면 아무것도 쓰지 않고 None."""
+def _reviewed_pairs(prompt_hash: str) -> set:
+    """지금 프롬프트(prompt_hash)로 만든 확인 파일(끝났든 아니든)에 들어간 (발췌 id, 규칙) 쌍.
+    프롬프트가 바뀌면 같은 쌍도 새 프롬프트로 다시 판정된 것이라 다시 고를 수 있다."""
+    return {(i["id"], i["rule"]) for f in _files() if _prompt_hash(f) == prompt_hash for i in read_review(f)}
+
+
+def _rule_line(text) -> str:
+    one = " ".join(scrub(str(text)).split())[:200].rstrip()
+    return "- 규칙: %s" % one if one else ""
+
+
+def make_review(day: date, prompt_hash: str, judgments: List[dict], excerpts: List[dict], size: int,
+                mode: str = "full", rule_texts: Optional[dict] = None) -> Optional[Path]:
+    """확인 파일을 쓰고 경로를 돌려준다. 후보가 하나도 없으면 아무것도 쓰지 않고 None.
+    교정 yes/no 를 반반(yes 가 올림)으로 고르고 한쪽이 모자라면 다른 쪽으로 채운다.
+    run: 발췌가 최근인 쌍부터. full: 날짜로 시드한 무작위 표본(결정적)."""
     by_id = {e.get("id"): e for e in excerpts}
+    done = _reviewed_pairs(prompt_hash)
     yes, no, seen = [], [], set()
     for j in judgments:
         rule, corr = j.get("rule"), j.get("correction")
-        if rule == "*" or corr not in ("yes", "no"):
+        if rule in ("*", "!") or corr not in ("yes", "no"):
             continue
         key = (j.get("excerpt"), rule)
-        if key in seen or j.get("excerpt") not in by_id:
+        if key in seen or key in done or j.get("excerpt") not in by_id:
             continue
         seen.add(key)
         (yes if corr == "yes" else no).append(j)
-    picked = yes[:size]
-    room = size - len(picked)
-    if room > 0 and no:
-        picked += random.Random(day.toordinal()).sample(no, min(room, len(no)))
+    if mode == "run":
+        newest = lambda j: str(by_id[j["excerpt"]].get("ts", ""))  # noqa: E731
+        yes.sort(key=newest, reverse=True)  # sort 는 안정적이라 ts 가 같으면 판정 순서를 지킨다
+        no.sort(key=newest, reverse=True)
+    else:
+        rng = random.Random(day.toordinal())
+        yes = rng.sample(yes, len(yes))
+        no = rng.sample(no, len(no))
+    n_yes = (size + 1) // 2
+    n_no = size - n_yes
+    picked_yes, picked_no = yes[:n_yes], no[:n_no]
+    if len(picked_yes) < n_yes:
+        picked_no = no[:n_no + n_yes - len(picked_yes)]
+    elif len(picked_no) < n_no:
+        picked_yes = yes[:n_yes + n_no - len(picked_no)]
+    picked = picked_yes + picked_no
 
     if not picked:
         return None
 
+    texts = rule_texts or {}
     out = ["---", "prompt_hash: %s" % prompt_hash,
            "created: %s" % rsi_common.now().strftime("%Y-%m-%dT%H:%M"), "---", "", HEADING, "", INSTRUCTION, ""]
     for n, j in enumerate(picked, 1):
         e = by_id[j["excerpt"]]
-        out += ["### R%d [%s] 판정: 교정 %s" % (n, j["rule"], j["correction"]),
-                "- 발췌: %s" % e["id"],
+        out.append("### R%d [%s] 판정: 교정 %s" % (n, j["rule"], j["correction"]))
+        rl = _rule_line(texts.get(j["rule"], ""))
+        if rl:
+            out.append(rl)
+        out += ["- 발췌: %s" % e["id"],
                 "U: %s" % scrub(str(e.get("u", "")))[:500].replace("\n", " "),
                 "A: %s" % scrub(str(e.get("a_tail", "")))[:500].replace("\n", " "),
                 "- [ ] 맞음", "- [ ] 틀림", ""]
@@ -172,4 +204,13 @@ def calibration() -> dict:
         rows += new_rows
     answered = [r for r in rows if r.get("answer") in ("맞음", "틀림")]
     agreement = (sum(1 for r in answered if r["answer"] == "맞음") / len(answered)) if answered else None
-    return {"calibrated": finished_any, "agreement": agreement, "answered": len(rows), "pending": pending}
+
+    def rate(judged: str, answer: str):
+        group = [r for r in answered if r.get("judged") == judged]
+        return ((sum(1 for r in group if r["answer"] == answer) / len(group)) if group else None), len(group)
+
+    yes_precision, yes_answered = rate("yes", "맞음")
+    miss_rate, no_answered = rate("no", "틀림")
+    return {"calibrated": finished_any, "agreement": agreement, "answered": len(rows), "pending": pending,
+            "yes_precision": yes_precision, "yes_answered": yes_answered,
+            "miss_rate": miss_rate, "no_answered": no_answered}
